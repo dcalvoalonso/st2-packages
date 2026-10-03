@@ -1,0 +1,92 @@
+# Build & Test st2 packages.
+# Mirrors the "packages" job in .circleci/config.yml (build + test only, no deploy).
+#
+# The st2 source used for the build can be overridden with the repository variables
+# ST2_GITURL and ST2_GITREV (Settings > Secrets and variables > Actions > Variables).
+
+name: Packages
+
+on:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  packages:
+    name: '${{ matrix.distro }}'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        distro: [jammy, noble, el9, el10]
+    env:
+      # buildenv_st2.sh picks the distro at CIRCLE_NODE_INDEX from DISTROS.
+      DISTROS: ${{ matrix.distro }}
+      CIRCLE_NODE_INDEX: 0
+      DISTRO: ${{ matrix.distro }}
+      ST2_GITURL: ${{ vars.ST2_GITURL || 'https://github.com/StackStorm/st2' }}
+      ST2_GITREV: ${{ vars.ST2_GITREV || 'master' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Ensure installation scripts are synced with their templates
+        run: make .generated-files-check
+
+      - name: Docker version
+        run: |
+          set -x
+          docker --version
+          docker compose version
+
+      - name: Initialize packages Build Environment
+        run: |
+          set -x
+          .circle/buildenv_st2.sh
+
+      - name: Copy st2-packages files to build containers
+        run: |
+          # creating dummy container which will hold a volume with data files
+          docker create -v /root/st2-packages -v /root/build -v /var/log/st2 -v /root/.cache/pip -v /tmp/wheelhouse --name st2-packages-vol alpine:3.24 /bin/true
+          # copy st2-packages data files into this volume
+          docker cp "${GITHUB_WORKSPACE}/." st2-packages-vol:/root/st2-packages
+
+      - name: Pull dependent Docker Images
+        run: |
+          .circle/docker-compose.sh pull ${DISTRO} || .circle/docker-compose.sh pull ${DISTRO}
+
+      - name: Build the ${{ matrix.distro }} Packages
+        run: |
+          mkdir -p build/${DISTRO}/log/
+          .circle/docker-compose.sh build ${DISTRO}
+          # Once build container finishes we can copy packages directly from it
+          docker cp st2-packages-vol:/root/build/. build/${DISTRO}
+
+      - name: Test the Packages
+        run: |
+          .circle/docker-compose.sh test ${DISTRO}
+
+      - name: Grab the st2 logs
+        if: always()
+        run: |
+          mkdir -p build/${DISTRO}/log/
+          docker cp st2-packages-vol:/var/log/st2 build/${DISTRO}/log/st2 || true
+
+      - name: Upload packages and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.distro }}
+          path: build/${{ matrix.distro }}
+          if-no-files-found: ignore
