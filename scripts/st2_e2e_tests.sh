@@ -57,6 +57,12 @@ reset_st2() {
         dnf -y remove st2 || true
     fi
     rm -rf /etc/st2 /opt/stackstorm /root/.st2 /home/stanley/.ssh
+
+    # Container base images skip package documentation, which drops the examples pack
+    # (/usr/share/doc/st2/examples) used by st2-self-check. Standard hosts install it.
+    # On EL, /etc/yum.conf may be a symlink to /etc/dnf/dnf.conf, so edit dnf.conf itself.
+    [ -f /etc/dnf/dnf.conf ] && sed -i '/^tsflags=.*nodocs/d' /etc/dnf/dnf.conf
+    rm -f /etc/dpkg/dpkg.cfg.d/excludes
 }
 
 install_built_package() {
