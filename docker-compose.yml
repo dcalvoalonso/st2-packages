@@ -1,20 +1,4 @@
 services:
-  jammy:
-    image: stackstorm/packagingrunner:latest
-    extends:
-      file: docker-compose.override.yml
-      service: suite-compose
-    environment:
-      - BUILDNODE=jammybuild
-      - TESTNODE=jammytest
-      - ST2_PACKAGES=st2
-    links:
-      - jammybuild
-      - jammytest
-      - rabbitmq
-      - mongodb
-      - redis
-
   noble:
     image: stackstorm/packagingrunner:latest
     extends:
@@ -64,12 +48,6 @@ services:
       - redis
 
   ## Package build nodes
-  jammybuild:
-    image: stackstorm/packagingbuild:jammy
-    extends:
-      file: docker-compose.override.yml
-      service: volumes-compose
-
   noblebuild:
     image: stackstorm/packagingbuild:noble
     extends:
@@ -89,16 +67,6 @@ services:
       service: volumes-compose
 
   ## Package testing nodes
-  jammytest:
-    image: stackstorm/packagingtest:jammy
-    privileged: true
-    cgroup: host
-    extends:
-      file: docker-compose.override.yml
-      service: volumes-compose
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup
-
   nobletest:
     image: stackstorm/packagingtest:noble
     privileged: true

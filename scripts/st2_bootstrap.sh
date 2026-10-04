@@ -181,7 +181,7 @@ if is_rpm; then
     BOOTSTRAP_FILE="st2bootstrap-el${MAJOR_VERSION}.sh"
     ST2BOOTSTRAP="${BASE_PATH}/${BRANCH}/scripts/${BOOTSTRAP_FILE}"
 elif is_deb; then
-    if [[ ! "${OS_VERSION_CODENAME}" =~ focal|jammy ]]; then
+    if [[ ! "${OS_VERSION_CODENAME}" =~ noble ]]; then
         echo "Codename ${OS_VERSION_CODENAME} is unsupported!"
         exit 2
     fi

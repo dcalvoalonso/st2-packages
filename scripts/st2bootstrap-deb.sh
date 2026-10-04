@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 #
-# DO NOT EDIT MANUALLY.  GENERATED FOR ubuntu 22.04
+# DO NOT EDIT MANUALLY.  GENERATED FOR ubuntu 24.04
 #
 # Please edit the corresponding template file and include files in https://github.com/StackStorm/st2-packages.git.
 
@@ -595,7 +595,7 @@ st2_install_dev_build()
 {
     # Retrieve package URL for the provided dev build from CircleCI build pipeline.
     DEV_BUILD="$1" # Repo name and build number - <repo name>/<build_num> (e.g. st2/5646)
-    DISTRO="$(st2_distribution_name)"  # Distro name (e.g. focal, jammy, el8, el9)
+    DISTRO="$(st2_distribution_name)"  # Distro name (e.g. noble, el9, el10)
     PACKAGE_NAME_REGEX="${DISTRO}/st2[_-].*\.(deb|rpm)$"
     MANIFEST_URL="https://circleci.com/api/v1.1/project/github/StackStorm/${DEV_BUILD}/artifacts"
 

@@ -4,22 +4,6 @@
 x-dockerfiles-context: &dockerfiles ${PACKAGING_GITCONTEXT:-https://github.com/dcalvoalonso/st2packaging-dockerfiles.git#feature/rhel-test-images}
 
 services:
-  jammy:
-    image: stackstorm/packagingrunner:latest
-    working_dir: /root/st2-packages
-    volumes_from:
-      - container:st2-packages-vol
-    environment:
-      - BUILDNODE=jammybuild
-      - TESTNODE=jammytest
-      - ST2_PACKAGES=st2
-    links:
-      - jammybuild
-      - jammytest
-      - rabbitmq
-      - mongodb
-      - redis
-
   noble:
     image: stackstorm/packagingrunner:latest
     working_dir: /root/st2-packages
@@ -98,15 +82,6 @@ services:
       - redis
 
   ## Package build nodes
-  jammybuild:
-    image: stackstorm/packagingbuild:jammy
-    build:
-      context: *dockerfiles
-      dockerfile: packagingbuild/jammy/Dockerfile
-    pull_policy: build
-    volumes_from:
-      - container:st2-packages-vol
-
   noblebuild:
     image: stackstorm/packagingbuild:noble
     build:
@@ -135,19 +110,6 @@ services:
       - container:st2-packages-vol
 
   ## Package testing nodes
-  jammytest:
-    image: stackstorm/packagingtest:jammy
-    build:
-      context: *dockerfiles
-      dockerfile: packagingtest/jammy/Dockerfile
-    pull_policy: build
-    privileged: true
-    cgroup: host
-    volumes_from:
-      - container:st2-packages-vol
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup
-
   nobletest:
     image: stackstorm/packagingtest:noble
     build:

@@ -50,10 +50,10 @@ After the build and test stages are finished all docker containers remain active
 ```shell
 docker ps
 # Find the required testing container
-# In our case it will be st2packages_jammytest_1
+# In our case it will be st2packages_nobletest_1
 
 # Simply exec to docker
-docker exec -it st2packages_jammytest_1 bash
+docker exec -it st2packages_nobletest_1 bash
 ```
 
 Once done, you are inside the testing environment where all services are up and running. Don't forget to do (after exec):
@@ -72,7 +72,7 @@ In order to build, package, install and test ST2 in an isolated Vagrant VM, run 
 vagrant up $TARGET
 ```
 
-Where `$TARGET` is one of `focal`, `jammy`, `el8` or `el9`. If you are using `el8`, comment
+Where `$TARGET` is one of `focal`, `el8` or `el9`. If you are using `el8`, comment
 out the `vm_config.vm.provision :docker` line in the Vagrantfile. There is logic in `setup-vagrant.sh`
 to install docker in `el8`.
 
@@ -116,37 +116,37 @@ For example:
 ```yaml
 services:
   ...
-  jammy:
+  noble:
     ...
     image: quay.io/stackstorm/packagingrunner
     ...
   ...
-  jammybuild:
+  noblebuild:
     ...
-    image: jammybuild
+    image: noblebuild
     ...
   ...
-  jammytest:
+  nobletest:
     ...
-    image: jammytest
+    image: nobletest
     ...
 ```
 
 NOTE: Main ``distro`` definition (e.g. ``focal``, ``el8`` etc.) needs to use packaging runner image.
 
-As you can see, `image` attribute references local image tagged `jammybuild` instead of a
-remote image (e.g. `stackstorm/packagingbuild:jammy` or similar).
+As you can see, `image` attribute references local image tagged `noblebuild` instead of a
+remote image (e.g. `stackstorm/packagingbuild:noble` or similar).
 
 Before that will work, you of course also need to build those images locally.
 
 For example:
 
 ```bash
-cd ~/st2packaging-dockerfiles/packagingbuild/jammy
-docker build -t jammybuild .
+cd ~/st2packaging-dockerfiles/packagingbuild/noble
+docker build -t noblebuild .
 
-cd ~/st2packaging-dockerfiles/packagingtest/jammy/systemd
-docker build -t jammytest .
+cd ~/st2packaging-dockerfiles/packagingtest/noble/systemd
+docker build -t nobletest .
 ```
 
 # License and Authors

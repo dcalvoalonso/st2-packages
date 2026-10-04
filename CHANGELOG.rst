@@ -27,6 +27,8 @@ Removed
 * Removed focal and rocky8
   Contributed by @nzlosh + @skiedude #761
 
+* Removed jammy (Ubuntu 22.04), as StackStorm now requires Python 3.11 or 3.12.
+
 
 v3.9
 --------------
