@@ -1,3 +1,8 @@
+# The package build and test images are built during the run from st2packaging-dockerfiles,
+# so that they include the current distribution packages. Set PACKAGING_GITCONTEXT to build
+# them from another repository or branch.
+x-dockerfiles-context: &dockerfiles ${PACKAGING_GITCONTEXT:-https://github.com/dcalvoalonso/st2packaging-dockerfiles.git#feature/rhel-test-images}
+
 services:
   jammy:
     image: stackstorm/packagingrunner:latest
@@ -95,27 +100,47 @@ services:
   ## Package build nodes
   jammybuild:
     image: stackstorm/packagingbuild:jammy
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/jammy/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   noblebuild:
     image: stackstorm/packagingbuild:noble
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/noble/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   rockylinux9build:
     image: stackstorm/packagingbuild:rockylinux9
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/rockylinux9/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   rockylinux10build:
     image: stackstorm/packagingbuild:rockylinux10
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/rockylinux10/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   ## Package testing nodes
   jammytest:
     image: stackstorm/packagingtest:jammy
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/jammy/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     volumes_from:
@@ -125,6 +150,10 @@ services:
 
   nobletest:
     image: stackstorm/packagingtest:noble
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/noble/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     volumes_from:
@@ -134,6 +163,10 @@ services:
 
   rockylinux9test:
     image: stackstorm/packagingtest:rockylinux9
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/rockylinux9/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     cap_add:
@@ -147,6 +180,10 @@ services:
 
   rockylinux10test:
     image: stackstorm/packagingtest:rockylinux10
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/rockylinux10/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     cap_add:
@@ -158,12 +195,10 @@ services:
     volumes:
       - /sys/fs/cgroup:/sys/fs/cgroup
 
-  # The RHEL test images are not published; they are built from st2packaging-dockerfiles.
-  # Set PACKAGINGTEST_GITCONTEXT to build them from another repository or branch.
   rhel9test:
     image: stackstorm/packagingtest:rhel9
     build:
-      context: ${PACKAGINGTEST_GITCONTEXT:-https://github.com/dcalvoalonso/st2packaging-dockerfiles.git#feature/rhel-test-images}
+      context: *dockerfiles
       dockerfile: packagingtest/rhel9/Dockerfile
     pull_policy: build
     privileged: true
@@ -180,7 +215,7 @@ services:
   rhel10test:
     image: stackstorm/packagingtest:rhel10
     build:
-      context: ${PACKAGINGTEST_GITCONTEXT:-https://github.com/dcalvoalonso/st2packaging-dockerfiles.git#feature/rhel-test-images}
+      context: *dockerfiles
       dockerfile: packagingtest/rhel10/Dockerfile
     pull_policy: build
     privileged: true
