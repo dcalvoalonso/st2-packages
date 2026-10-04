@@ -54,6 +54,16 @@ jobs:
           docker --version
           docker compose version
 
+      - name: Allow unix_chkpwd to read /etc/shadow in test containers
+        # Ubuntu 24.04 confines /usr/sbin/unix_chkpwd with an AppArmor profile which also applies
+        # inside containers. Rocky Linux's /etc/shadow is mode 0000, so without these capabilities
+        # the PAM account check fails and SSH logins to the el9 test node are rejected.
+        run: |
+          if [ -f /etc/apparmor.d/unix-chkpwd ]; then
+            printf 'capability dac_override,\ncapability dac_read_search,\n' | sudo tee -a /etc/apparmor.d/local/unix-chkpwd
+            sudo apparmor_parser -r /etc/apparmor.d/unix-chkpwd
+          fi
+
       - name: Initialize packages Build Environment
         run: |
           set -x
@@ -82,7 +92,7 @@ jobs:
           .circle/docker-compose.sh test ${DISTRO}
 
       - name: Show test node diagnostics
-        if: always()
+        if: failure()
         env:
           TESTNODE: ${{ matrix.testnode }}
         run: |
