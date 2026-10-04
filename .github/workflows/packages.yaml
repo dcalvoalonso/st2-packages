@@ -82,18 +82,33 @@ jobs:
           .circle/docker-compose.sh test ${DISTRO}
 
       - name: Show test node diagnostics
-        if: failure()
+        if: always()
         env:
           TESTNODE: ${{ matrix.testnode }}
         run: |
           dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          tn() { echo "### $*"; dc exec -T "${TESTNODE}" "$@" || true; }
+          uname -r
+          docker version --format 'docker server {{.Server.Version}}' || true
           dc ps -a || true
           dc logs --tail 100 "${TESTNODE}" || true
-          dc exec -T "${TESTNODE}" systemctl is-system-running || true
-          dc exec -T "${TESTNODE}" systemctl --failed --no-pager || true
-          dc exec -T "${TESTNODE}" systemctl status sshd ssh --no-pager || true
-          dc exec -T "${TESTNODE}" journalctl -u sshd -u ssh --no-pager -n 100 || true
-          dc exec -T "${TESTNODE}" ls -l /run/nologin /etc/ssh || true
+          tn systemctl is-system-running
+          tn systemctl --failed --no-pager
+          tn systemctl status sshd ssh --no-pager
+          tn journalctl -u sshd -u ssh --no-pager -n 100
+          tn ls -l /run/nologin /etc/ssh
+          # PAM account phase: unix_chkpwd needs to read the root passwd/shadow entries.
+          tn ls -l /etc/passwd /etc/shadow /usr/sbin/unix_chkpwd
+          tn getent passwd root
+          tn sh -c 'getent shadow root | cut -d: -f1,3-'
+          tn sh -c '/usr/sbin/unix_chkpwd root chkexpiry; echo "unix_chkpwd exit=$?"'
+          tn chage -l root
+          tn grep -E '^(passwd|shadow|group):' /etc/nsswitch.conf
+          tn sh -c 'grep -E "^Cap(Prm|Eff|Bnd)" /proc/1/status; for p in $(pidof sshd); do echo "sshd $p:"; grep -E "^(Cap(Prm|Eff|Bnd)|NoNewPrivs)" /proc/$p/status; done'
+          tn systemctl show sshd -p NoNewPrivileges -p CapabilityBoundingSet -p ProtectSystem -p ProtectHome -p PrivateDevices
+          tn sh -c 'grep -v "^#" /etc/pam.d/sshd; echo ---; grep -E "^account" /etc/pam.d/password-auth /etc/pam.d/system-auth 2>/dev/null'
+          tn sh -c 'ulimit -n'
+          tn sh -c 'rpm -q pam openssh-server systemd authselect 2>/dev/null || dpkg-query -W libpam-modules openssh-server systemd'
 
       - name: Grab the st2 logs
         if: always()
