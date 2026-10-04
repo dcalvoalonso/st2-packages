@@ -247,7 +247,7 @@ test_upgrade() {
     check_equal "execution from ${old_version}" succeeded "$(st2 execution get "$exec_id" -j | json_field status)"
     check_equal "datastore value" kept-across-upgrade "$(st2 key get e2e_plain -j | json_field value)"
     check_equal "encrypted datastore value" secret-across-upgrade "$(st2 key get e2e_secret --decrypt -j | json_field value)"
-    check_equal "installed pack" hubot "$(st2 pack get hubot -j | json_field ref)"
+    check_equal "installed pack" hubot "$(st2 pack get hubot -j | json_field name)"
     run_action core.local cmd='echo after-upgrade' >/dev/null && echo "OK: local runner"
     run_action core.remote hosts=localhost cmd=hostname >/dev/null && echo "OK: remote runner (SSH)"
     run_action packs.list >/dev/null && echo "OK: python runner"
