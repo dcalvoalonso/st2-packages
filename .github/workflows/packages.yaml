@@ -29,6 +29,8 @@ jobs:
           - {distro: noble, testnode: nobletest}
           - {distro: el9, testnode: rockylinux9test}
           - {distro: el10, testnode: rockylinux10test}
+          - {distro: rhel9, testnode: rhel9test}
+          - {distro: rhel10, testnode: rhel10test}
     env:
       # buildenv_st2.sh picks the distro at CIRCLE_NODE_INDEX from DISTROS.
       DISTROS: ${{ matrix.distro }}
