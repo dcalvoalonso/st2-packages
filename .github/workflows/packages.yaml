@@ -24,7 +24,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        distro: [jammy, noble, el9, el10]
+        include:
+          - {distro: jammy, testnode: jammytest}
+          - {distro: noble, testnode: nobletest}
+          - {distro: el9, testnode: rockylinux9test}
+          - {distro: el10, testnode: rockylinux10test}
     env:
       # buildenv_st2.sh picks the distro at CIRCLE_NODE_INDEX from DISTROS.
       DISTROS: ${{ matrix.distro }}
@@ -76,6 +80,20 @@ jobs:
       - name: Test the Packages
         run: |
           .circle/docker-compose.sh test ${DISTRO}
+
+      - name: Show test node diagnostics
+        if: failure()
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          dc ps -a || true
+          dc logs --tail 100 "${TESTNODE}" || true
+          dc exec -T "${TESTNODE}" systemctl is-system-running || true
+          dc exec -T "${TESTNODE}" systemctl --failed --no-pager || true
+          dc exec -T "${TESTNODE}" systemctl status sshd ssh --no-pager || true
+          dc exec -T "${TESTNODE}" journalctl -u sshd -u ssh --no-pager -n 100 || true
+          dc exec -T "${TESTNODE}" ls -l /run/nologin /etc/ssh || true
 
       - name: Grab the st2 logs
         if: always()
