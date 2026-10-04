@@ -39,7 +39,8 @@ heading() {
     echo "===> $*"
 }
 
-# Show the st2 state when a test fails.
+# Show the st2 state when a test fails. Written to stderr so that it is not captured
+# when the failure happens inside a command substitution.
 on_error() {
     heading "Failure diagnostics"
     st2ctl status || true
@@ -47,7 +48,7 @@ on_error() {
     for svc in st2api st2auth st2actionrunner st2workflowengine; do
         journalctl -u "$svc" --no-pager -n 30 || true
     done
-}
+} >&2
 
 reset_st2() {
     heading "Removing any previous st2 installation"
@@ -63,6 +64,12 @@ reset_st2() {
     # On EL, /etc/yum.conf may be a symlink to /etc/dnf/dnf.conf, so edit dnf.conf itself.
     [ -f /etc/dnf/dnf.conf ] && sed -i '/^tsflags=.*nodocs/d' /etc/dnf/dnf.conf
     rm -f /etc/dpkg/dpkg.cfg.d/excludes
+
+    # st2tests generates ids with uuidgen, which Ubuntu ships separately in uuid-runtime
+    # (part of util-linux on EL) and which the Ubuntu container images do not include.
+    if [ "$(platform)" = deb ] && ! command -v uuidgen >/dev/null; then
+        apt-get update && apt-get install -y uuid-runtime
+    fi
 }
 
 install_built_package() {
@@ -94,7 +101,8 @@ gpgcheck=0
 gpgkey=${base}/gpgkey
 enabled=1
 EOF
-        dnf -q list --available st2 >/dev/null 2>&1 || return 1
+        rpm --import "${base}/gpgkey"
+        dnf -y --repo "st2-${ST2_REPO}" list --available st2 || return 1
         dnf -y install st2
     fi
 }
@@ -187,7 +195,7 @@ st2_version() {
 
 built_version() {
     local f
-    f="$(ls -1 "$ARTIFACT_DIR"/st2[_-][0-9]*.{deb,rpm} 2>/dev/null | head -n1)"
+    f="$(ls -1 "$ARTIFACT_DIR"/st2[_-][0-9]*."$(platform)" | head -n1)"
     basename "$f" | sed -E 's/^st2[_-]([0-9][^-_]*).*/\1/'
 }
 
