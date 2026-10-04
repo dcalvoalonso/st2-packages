@@ -20,7 +20,7 @@ jobs:
   packages:
     name: '${{ matrix.distro }}'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     strategy:
       fail-fast: false
       matrix:
@@ -90,8 +90,26 @@ jobs:
           docker cp st2-packages-vol:/root/build/. build/${DISTRO}
 
       - name: Test the Packages
+        id: test
         run: |
           .circle/docker-compose.sh test ${DISTRO}
+
+      - name: Run st2-self-check on the ${{ matrix.distro }} test node
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          dc exec -T mongodb mongosh --quiet st2 --eval 'db.dropDatabase()'
+          dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh self-check
+
+      - name: Test upgrading from the latest st2 release
+        if: ${{ !cancelled() && steps.test.outcome == 'success' }}
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          dc exec -T mongodb mongosh --quiet st2 --eval 'db.dropDatabase()'
+          dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh upgrade
 
       - name: Show test node diagnostics
         if: failure()
