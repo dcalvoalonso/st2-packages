@@ -1001,12 +1001,12 @@ nginx_install()
 
 mongodb_configure_repo()
 {
-    repo_definition "mongodb-org-7.0" \
+    repo_definition "mongodb-org-8.2" \
                     "https://repo.mongodb.org/apt/${OS_ID}" \
-                    "${OS_VERSION_CODENAME}/mongodb-org/7.0" \
+                    "${OS_VERSION_CODENAME}/mongodb-org/8.2" \
                     "multiverse" \
-                    "mongodb-org-7.0-key" \
-                    "https://www.mongodb.org/static/pgp/server-7.0.asc"
+                    "mongodb-org-8.0-key" \
+                    "https://www.mongodb.org/static/pgp/server-8.0.asc"
 }
 mongodb_configuration()
 {

@@ -18,6 +18,8 @@ Changed
 
  * Updated pip to 26.2.1 in the st2 virtualenv for deb and rpm packages.
 
+ * Updated the install scripts to MongoDB 8.2 (was 7.0).
+
  * Added systemd generators for st2auth, st2api, st2stream service unit files.
    Contributed by @nzlosh #762
 

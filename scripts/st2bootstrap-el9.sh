@@ -989,10 +989,10 @@ nginx_install()
 ###############[ MONGODB ]###############
 mongodb_configure_repo()
 {
-    repo_definition "mongodb-org-7.0" \
-                    "https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/" \
-                    "mongodb-org-7.0-key" \
-                    "https://pgp.mongodb.com/server-7.0.asc"
+    repo_definition "mongodb-org-8.2" \
+                    "https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.2/x86_64/" \
+                    "mongodb-org-8.0-key" \
+                    "https://pgp.mongodb.com/server-8.0.asc"
 }
 mongodb_adjust_selinux_policies()
 {
