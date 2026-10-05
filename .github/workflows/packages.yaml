@@ -3,6 +3,7 @@
 #
 # The st2 source used for the build can be overridden with the repository variables
 # ST2_GITURL and ST2_GITREV (Settings > Secrets and variables > Actions > Variables).
+# The st2web packages used for the Web UI test are built from ST2WEB_GITURL and ST2WEB_GITREV.
 
 name: Packages
 
@@ -17,8 +18,47 @@ permissions:
   contents: read
 
 jobs:
+  st2web:
+    name: st2web packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ST2WEB_GITURL: ${{ vars.ST2WEB_GITURL || 'https://github.com/StackStorm/st2web' }}
+      ST2WEB_GITREV: ${{ vars.ST2WEB_GITREV || 'master' }}
+    steps:
+      - name: Clone st2web
+        run: git clone --depth 1 --branch "${ST2WEB_GITREV}" "${ST2WEB_GITURL}" st2web
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # engines.node in st2web's package.json
+          node-version-file: st2web/package.json
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential rpm devscripts debhelper
+          npm install --global lerna@6.0.0 yarn
+
+      - name: Build the st2web deb and rpm packages
+        working-directory: st2web
+        run: |
+          lerna bootstrap
+          make deb
+          make rpm
+          mkdir -p ../st2web-packages
+          cp -v ../st2web_*.deb ../st2web-*.rpm ../st2web-packages/
+
+      - name: Upload the st2web packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: st2web-packages
+          path: st2web-packages
+
   packages:
     name: '${{ matrix.distro }}'
+    needs: st2web
     runs-on: ubuntu-24.04
     timeout-minutes: 180
     strategy:
@@ -100,6 +140,20 @@ jobs:
           dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
           dc exec -T mongodb mongosh --quiet st2 --eval 'db.dropDatabase()'
           dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh self-check
+
+      - name: Download the st2web packages
+        uses: actions/download-artifact@v4
+        with:
+          name: st2web-packages
+          path: st2web-packages
+
+      - name: Test the Web UI through nginx on the ${{ matrix.distro }} test node
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          docker cp st2web-packages/. st2-packages-vol:/root/build/st2web
+          dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh webui
 
       - name: Test upgrading from the latest st2 release
         if: ${{ !cancelled() && steps.test.outcome == 'success' }}

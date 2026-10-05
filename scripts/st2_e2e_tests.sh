@@ -2,11 +2,15 @@
 #
 # End-to-end tests run on a package test node after the rspec suite.
 #
-# Usage: st2_e2e_tests.sh self-check | upgrade
+# Usage: st2_e2e_tests.sh self-check | webui | upgrade
 #
 #   self-check  Install the built st2 package on a clean node, enable authentication and
 #               run st2-self-check (st2tests suite: runners incl. remote SSH, rules,
 #               datastore, Orquesta examples).
+#   webui       Run after self-check, on the same node. Install nginx with the install
+#               script functions and the st2web package from $ST2WEB_DIR, then use the
+#               Web UI, auth, API and stream endpoints through nginx over HTTPS, as the
+#               browser does.
 #   upgrade     Install the latest st2 release from the StackStorm "stable" repository,
 #               create some state, upgrade to the built package and check that the state
 #               is kept and that st2 still works. Skipped when no release exists for the
@@ -22,6 +26,8 @@ ST2_REPO="${ST2_REPO:-stable}"
 CONF=/etc/st2/st2.conf
 ST2_USER=st2admin
 ST2_PYTHON=/opt/stackstorm/st2/bin/python
+ST2WEB_DIR="${ST2WEB_DIR:-$ARTIFACT_DIR/st2web}"
+WEB_URL=https://127.0.0.1
 
 export MONGODBHOST="${MONGODBHOST:-mongodb}"
 export RABBITMQHOST="${RABBITMQHOST:-rabbitmq}"
@@ -48,6 +54,10 @@ on_error() {
     for svc in st2api st2auth st2actionrunner st2workflowengine; do
         journalctl -u "$svc" --no-pager -n 30 || true
     done
+    if [ -d /etc/nginx ]; then
+        systemctl status nginx --no-pager || true
+        tail -n 30 /var/log/nginx/error.log || true
+    fi
 } >&2
 
 reset_st2() {
@@ -99,6 +109,15 @@ remove_released_repository() {
     rm -f /etc/apt/sources.list.d/st2-${ST2_REPO}.list /etc/yum.repos.d/st2-${ST2_REPO}.repo
 }
 
+# Random password for this run only; the flat file backend accepts $2y$ bcrypt hashes.
+set_password() {
+    ST2_PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -d '/+=')"
+    ST2_PASSWORD="$ST2_PASSWORD" "$ST2_PYTHON" -c '
+import bcrypt, os
+h = bcrypt.hashpw(os.environ["ST2_PASSWORD"].encode(), bcrypt.gensalt()).decode()
+print("%s:$2y$%s" % ("'"$ST2_USER"'", h[4:]))' >/etc/st2/htpasswd
+}
+
 # Configure st2 like a standard installation: services, authentication with a flat file
 # backend, datastore encryption and the stanley system user for the remote runners.
 configure_st2() {
@@ -113,12 +132,7 @@ EOF
     mkdir -p /etc/st2/keys
     st2-generate-symmetric-crypto-key --key-path /etc/st2/keys/datastore_key.json
 
-    # Random password for this run only; the flat file backend accepts $2y$ bcrypt hashes.
-    ST2_PASSWORD="$(head -c 18 /dev/urandom | base64 | tr -d '/+=')"
-    ST2_PASSWORD="$ST2_PASSWORD" "$ST2_PYTHON" -c '
-import bcrypt, os
-h = bcrypt.hashpw(os.environ["ST2_PASSWORD"].encode(), bcrypt.gensalt()).decode()
-print("%s:$2y$%s" % ("'"$ST2_USER"'", h[4:]))' >/etc/st2/htpasswd
+    set_password
 
     mkdir -p /home/stanley/.ssh
     chmod 0700 /home/stanley/.ssh
@@ -151,8 +165,18 @@ login() {
     return 1
 }
 
+# json_field KEY [KEY...]: print a (nested) field of the JSON document on stdin.
 json_field() {
-    "$ST2_PYTHON" -c 'import json, sys; print(json.load(sys.stdin)[sys.argv[1]])' "$1"
+    "$ST2_PYTHON" -c '
+import json, sys
+value = json.load(sys.stdin)
+for key in sys.argv[1:]:
+    value = value[key]
+print(value)' "$@"
+}
+
+json_length() {
+    "$ST2_PYTHON" -c 'import json, sys; print(len(json.load(sys.stdin)))'
 }
 
 # Run an action and fail unless it succeeds. Prints the execution id.
@@ -243,10 +267,127 @@ test_upgrade() {
     st2 pack install hubot && echo "OK: pack install (Orquesta)"
 }
 
+# Print the functions of the install script for this distribution without its main
+# section, so that they can be run one by one. The os-release variables are loaded with a
+# stricter pattern than the script's own, which fails on os-release files with blank lines.
+# There is no el10 script: use the el9 one with the nginx repository for this EL version.
+install_script_functions() {
+    local script=st2bootstrap-deb.sh
+    [ "$(platform)" = rpm ] && script=st2bootstrap-el9.sh
+    sed -n 's/^\([A-Z_]\+=\)/OS_\1/p' /etc/os-release
+    sed -e '/^set -e -u +x$/d' \
+        -e '/^source <(sed .*\/etc\/os-release)$/d' \
+        -e '/^trap .fail. EXIT/,$d' \
+        -e "s#/packages/mainline/rhel/9/#/packages/mainline/rhel/${VERSION_ID%%.*}/#" \
+        "$SCRIPTS_DIR/$script"
+}
+
+install_nginx() {
+    heading "Installing nginx with the install script functions"
+    test -f /usr/share/doc/st2/conf/nginx/st2.conf
+    # nginx_install needs openssl for the self-signed certificate and, on deb, gnupg for the
+    # repository key (both installed earlier by the install script).
+    local prereqs='pkg_install openssl'
+    [ "$(platform)" = deb ] && prereqs='pkg_meta_update; pkg_install gnupg openssl'
+    bash -e <(install_script_functions; printf '%s\n' "$prereqs" nginx_install)
+    nginx -v
+}
+
+install_st2web() {
+    heading "Installing the st2web package from ${ST2WEB_DIR}"
+    if [ "$(platform)" = deb ]; then
+        apt-get install -y "$(ls -1 "$ST2WEB_DIR"/st2web_*.deb | head -n1)"
+        dpkg-query -W st2web
+    else
+        dnf -y install "$(ls -1 "$ST2WEB_DIR"/st2web-*.rpm | head -n1)"
+        rpm -q st2web
+    fi
+    test -f /opt/stackstorm/static/webui/index.html
+}
+
+# curl through nginx, which uses the self-signed certificate of the install script.
+web_curl() {
+    curl -sS -k --max-time 30 "$@"
+}
+
+http_code() {
+    web_curl -o /dev/null -w '%{http_code}' "$@"
+}
+
+# The checks follow what the browser does: load the page and its assets, log in, call the
+# API with the token and listen to the stream.
+check_webui() {
+    local page asset out token exec_id status i stream_pid
+    local stream_log=/tmp/st2-e2e-stream.log
+
+    heading "Checking the Web UI through nginx"
+    check_equal "HTTP to HTTPS redirect" "308 ${WEB_URL}/" \
+        "$(web_curl -o /dev/null -w '%{http_code} %{redirect_url}' http://127.0.0.1/)"
+    page="$(web_curl -f "$WEB_URL/")"
+    if ! grep -q '<title>StackStorm Web UI</title>' <<<"$page"; then
+        echo "FAIL: / is not the st2web index.html" >&2
+        return 1
+    fi
+    echo "OK: index.html"
+    for asset in $(grep -oE '(src|href)="[^":]+"' <<<"$page" | cut -d'"' -f2 | sort -u); do
+        out="$(web_curl -o /dev/null -w '%{http_code} %{size_download}' "$WEB_URL/$asset")"
+        check_equal "GET /$asset" 200 "${out% *}"
+        [ "${out#* }" -gt 0 ] || { echo "FAIL: /$asset is empty" >&2; return 1; }
+    done
+
+    heading "Checking login and the API through nginx"
+    check_equal "login with a wrong password" 401 \
+        "$(http_code -X POST -u "${ST2_USER}:wrong-${ST2_PASSWORD}" "$WEB_URL/auth/v1/tokens")"
+    token="$(web_curl -f -X POST -u "${ST2_USER}:${ST2_PASSWORD}" "$WEB_URL/auth/v1/tokens" | json_field token)"
+    echo "OK: login"
+    check_equal "API without a token" 401 "$(http_code "$WEB_URL/api/v1/actions")"
+    for i in actions packs rules runnertypes triggertypes executions; do
+        check_equal "GET /api/v1/$i" 200 "$(http_code -H "X-Auth-Token: $token" "$WEB_URL/api/v1/$i?limit=5")"
+    done
+    out="$(web_curl -f -H "X-Auth-Token: $token" "$WEB_URL/api/v1/actions?pack=core" | json_length)"
+    [ "$out" -gt 0 ] || { echo "FAIL: no core actions listed" >&2; return 1; }
+    echo "OK: core actions listed ($out)"
+
+    heading "Running an action through nginx and listening to the stream"
+    web_curl -N --max-time 120 "$WEB_URL/stream/v1/stream?x-auth-token=$token" >"$stream_log" &
+    stream_pid=$!
+    sleep 3
+    exec_id="$(web_curl -f -X POST -H "X-Auth-Token: $token" -H 'Content-Type: application/json' \
+        -d '{"action": "core.local", "parameters": {"cmd": "echo st2web-e2e"}}' \
+        "$WEB_URL/api/v1/executions" | json_field id)"
+    for i in $(seq 1 60); do
+        out="$(web_curl -f -H "X-Auth-Token: $token" "$WEB_URL/api/v1/executions/$exec_id")"
+        status="$(json_field status <<<"$out")"
+        case "$status" in requested | scheduled | running | delayed) sleep 2 ;; *) break ;; esac
+    done
+    check_equal "execution status" succeeded "$status"
+    check_equal "execution output" st2web-e2e "$(json_field result stdout <<<"$out")"
+    sleep 3
+    kill "$stream_pid" 2>/dev/null || true
+    wait "$stream_pid" || true
+    if ! grep -q '^event: st2\.execution' "$stream_log" || ! grep -q "$exec_id" "$stream_log"; then
+        echo "FAIL: no stream event for execution $exec_id" >&2
+        head -c 2000 "$stream_log" >&2
+        return 1
+    fi
+    echo "OK: stream events for execution $exec_id"
+}
+
+test_webui() {
+    # st2 is still running from the self-check; the password of that run is not kept.
+    set_password
+    st2ctl restart-component st2auth
+    login
+    install_nginx
+    install_st2web
+    check_webui
+}
+
 trap on_error ERR
 
 case "$1" in
     self-check) test_self_check ;;
+    webui) test_webui ;;
     upgrade) test_upgrade ;;
-    *) echo "usage: $0 self-check | upgrade" >&2; exit 2 ;;
+    *) echo "usage: $0 self-check | webui | upgrade" >&2; exit 2 ;;
 esac
