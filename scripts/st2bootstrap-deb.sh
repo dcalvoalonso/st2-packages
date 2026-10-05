@@ -891,7 +891,7 @@ st2web_install()
 
 nodejs_configure_repository()
 {
-    local NODE_VERSION="20.x"
+    local NODE_VERSION="24.x"
 
     local RM_FILES=(
         /etc/apt/preferences.d/nsolid.pref
