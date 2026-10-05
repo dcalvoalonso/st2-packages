@@ -1,20 +1,9 @@
-services:
-  jammy:
-    image: stackstorm/packagingrunner:latest
-    working_dir: /root/st2-packages
-    volumes_from:
-      - container:st2-packages-vol
-    environment:
-      - BUILDNODE=jammybuild
-      - TESTNODE=jammytest
-      - ST2_PACKAGES=st2
-    links:
-      - jammybuild
-      - jammytest
-      - rabbitmq
-      - mongodb
-      - redis
+# The package build and test images are built during the run from st2packaging-dockerfiles,
+# so that they include the current distribution packages. Set PACKAGING_GITCONTEXT to build
+# them from another repository or branch.
+x-dockerfiles-context: &dockerfiles ${PACKAGING_GITCONTEXT:-https://github.com/dcalvoalonso/st2packaging-dockerfiles.git#feature/rhel-test-images}
 
+services:
   noble:
     image: stackstorm/packagingrunner:latest
     working_dir: /root/st2-packages
@@ -61,39 +50,72 @@ services:
       - mongodb
       - redis
 
-  ## Package build nodes
-  jammybuild:
-    image: stackstorm/packagingbuild:jammy
+  # el9/el10 packages built on Rocky Linux and tested on Red Hat UBI
+  rhel9:
+    image: stackstorm/packagingrunner:latest
+    working_dir: /root/st2-packages
     volumes_from:
       - container:st2-packages-vol
+    environment:
+      - BUILDNODE=rockylinux9build
+      - TESTNODE=rhel9test
+    links:
+      - rockylinux9build
+      - rhel9test
+      - rabbitmq
+      - mongodb
+      - redis
 
+  rhel10:
+    image: stackstorm/packagingrunner:latest
+    working_dir: /root/st2-packages
+    volumes_from:
+      - container:st2-packages-vol
+    environment:
+      - BUILDNODE=rockylinux10build
+      - TESTNODE=rhel10test
+    links:
+      - rockylinux10build
+      - rhel10test
+      - rabbitmq
+      - mongodb
+      - redis
+
+  ## Package build nodes
   noblebuild:
     image: stackstorm/packagingbuild:noble
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/noble/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   rockylinux9build:
     image: stackstorm/packagingbuild:rockylinux9
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/rockylinux9/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   rockylinux10build:
     image: stackstorm/packagingbuild:rockylinux10
+    build:
+      context: *dockerfiles
+      dockerfile: packagingbuild/rockylinux10/Dockerfile
+    pull_policy: build
     volumes_from:
       - container:st2-packages-vol
 
   ## Package testing nodes
-  jammytest:
-    image: stackstorm/packagingtest:jammy
-    privileged: true
-    cgroup: host
-    volumes_from:
-      - container:st2-packages-vol
-    volumes:
-      - /sys/fs/cgroup:/sys/fs/cgroup
-
   nobletest:
     image: stackstorm/packagingtest:noble
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/noble/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     volumes_from:
@@ -103,6 +125,10 @@ services:
 
   rockylinux9test:
     image: stackstorm/packagingtest:rockylinux9
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/rockylinux9/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     cap_add:
@@ -116,6 +142,44 @@ services:
 
   rockylinux10test:
     image: stackstorm/packagingtest:rockylinux10
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/rockylinux10/Dockerfile
+    pull_policy: build
+    privileged: true
+    cgroup: host
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    volumes_from:
+      - container:st2-packages-vol
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup
+
+  rhel9test:
+    image: stackstorm/packagingtest:rhel9
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/rhel9/Dockerfile
+    pull_policy: build
+    privileged: true
+    cgroup: host
+    cap_add:
+      - SYS_ADMIN
+    security_opt:
+      - seccomp:unconfined
+    volumes_from:
+      - container:st2-packages-vol
+    volumes:
+      - /sys/fs/cgroup:/sys/fs/cgroup
+
+  rhel10test:
+    image: stackstorm/packagingtest:rhel10
+    build:
+      context: *dockerfiles
+      dockerfile: packagingtest/rhel10/Dockerfile
+    pull_policy: build
     privileged: true
     cgroup: host
     cap_add:
@@ -141,6 +205,6 @@ services:
       - "27017:27017"
 
   redis:
-    image: redis:8.6
+    image: redis:8.10
     ports:
       - "6379:6379"

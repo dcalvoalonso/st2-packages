@@ -590,7 +590,7 @@ st2_install_dev_build()
 {
     # Retrieve package URL for the provided dev build from CircleCI build pipeline.
     DEV_BUILD="$1" # Repo name and build number - <repo name>/<build_num> (e.g. st2/5646)
-    DISTRO="$(st2_distribution_name)"  # Distro name (e.g. focal, jammy, el8, el9)
+    DISTRO="$(st2_distribution_name)"  # Distro name (e.g. noble, el9, el10)
     PACKAGE_NAME_REGEX="${DISTRO}/st2[_-].*\.(deb|rpm)$"
     MANIFEST_URL="https://circleci.com/api/v1.1/project/github/StackStorm/${DEV_BUILD}/artifacts"
 
@@ -885,7 +885,7 @@ st2web_install()
 ###############[ NODEJS ]###############
 nodejs_configure_repository()
 {
-    local NODE_VERSION="20.x"
+    local NODE_VERSION="24.x"
     rm -f /etc/yum.repos.d/nodesource*.repo \
         "nodejs-${NODE_VERSION}.repo" \
         "nsolid.repo"
@@ -897,7 +897,7 @@ nodejs_configure_repository()
     repo_kv_set "nodejs-${NODE_VERSION}" repo_gpgcheck 0
 
     # Add N|Solid repository if Node.js is an LTS version
-    if [[ "$NODE_VERSION" =~ ^(18|20|22)".x" ]]; then
+    if [[ "$NODE_VERSION" =~ ^(18|20|22|24)".x" ]]; then
         repo_definition "nsolid" \
                         "https://rpm.nodesource.com/pub_${NODE_VERSION}/nodistro/nsolid/x86_64" \
                         "nsolid-key" \
@@ -918,7 +918,7 @@ nodejs_install()
 nginx_configure_repo()
 {
     repo_definition "nginx" \
-                    "http://nginx.org/packages/rhel/9/x86_64/" \
+                    "http://nginx.org/packages/mainline/rhel/9/x86_64/" \
                     "nginx-key" \
                     "http://nginx.org/keys/nginx_signing.key"
 }
@@ -989,10 +989,10 @@ nginx_install()
 ###############[ MONGODB ]###############
 mongodb_configure_repo()
 {
-    repo_definition "mongodb-org-7.0" \
-                    "https://repo.mongodb.org/yum/redhat/9/mongodb-org/7.0/x86_64/" \
-                    "mongodb-org-7.0-key" \
-                    "https://pgp.mongodb.com/server-7.0.asc"
+    repo_definition "mongodb-org-8.2" \
+                    "https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.2/x86_64/" \
+                    "mongodb-org-8.0-key" \
+                    "https://pgp.mongodb.com/server-8.0.asc"
 }
 mongodb_adjust_selinux_policies()
 {

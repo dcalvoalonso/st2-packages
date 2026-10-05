@@ -2,7 +2,7 @@
 {% if id in ["rhel", "rocky", "centos", "opensuse-leap"] -%}
 nodejs_configure_repository()
 {
-    local NODE_VERSION="20.x"
+    local NODE_VERSION="24.x"
     rm -f /etc/yum.repos.d/nodesource*.repo \
         "nodejs-${NODE_VERSION}.repo" \
         "nsolid.repo"
@@ -16,7 +16,7 @@ nodejs_configure_repository()
     repo_kv_set "nodejs-${NODE_VERSION}" repo_gpgcheck 0
 
     # Add N|Solid repository if Node.js is an LTS version
-    if [[ "$NODE_VERSION" =~ ^(18|20|22)".x" ]]; then
+    if [[ "$NODE_VERSION" =~ ^(18|20|22|24)".x" ]]; then
         repo_definition "nsolid" \
                         "https://rpm.nodesource.com/pub_${NODE_VERSION}/nodistro/nsolid/x86_64" \
                         "nsolid-key" \
@@ -30,7 +30,7 @@ nodejs_configure_repository()
 {% elif id in ["ubuntu", "debian"] %}
 nodejs_configure_repository()
 {
-    local NODE_VERSION="20.x"
+    local NODE_VERSION="24.x"
 
     local RM_FILES=(
         /etc/apt/preferences.d/nsolid.pref

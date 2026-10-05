@@ -2,10 +2,10 @@
 {% if id in ["rhel", "rocky", "centos", "opensuse-leap"] -%}
 mongodb_configure_repo()
 {
-    repo_definition "mongodb-org-7.0" \
-                    "https://repo.mongodb.org/yum/redhat/{{ version_id }}/mongodb-org/7.0/x86_64/" \
-                    "mongodb-org-7.0-key" \
-                    "https://pgp.mongodb.com/server-7.0.asc"
+    repo_definition "mongodb-org-8.2" \
+                    "https://repo.mongodb.org/yum/redhat/{{ version_id }}/mongodb-org/8.2/x86_64/" \
+                    "mongodb-org-8.0-key" \
+                    "https://pgp.mongodb.com/server-8.0.asc"
 }
 mongodb_adjust_selinux_policies()
 {
@@ -34,12 +34,12 @@ mongodb_configuration()
 {% set component = {"ubuntu": "multiverse", "debian": "main"}[id] %}
 mongodb_configure_repo()
 {
-    repo_definition "mongodb-org-7.0" \
+    repo_definition "mongodb-org-8.2" \
                     "https://repo.mongodb.org/apt/${OS_ID}" \
-                    "${OS_VERSION_CODENAME}/mongodb-org/7.0" \
+                    "${OS_VERSION_CODENAME}/mongodb-org/8.2" \
                     "{{ component }}" \
-                    "mongodb-org-7.0-key" \
-                    "https://www.mongodb.org/static/pgp/server-7.0.asc"
+                    "mongodb-org-8.0-key" \
+                    "https://www.mongodb.org/static/pgp/server-8.0.asc"
 }
 mongodb_configuration()
 {

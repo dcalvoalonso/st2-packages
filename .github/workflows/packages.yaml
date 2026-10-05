@@ -1,0 +1,208 @@
+# Build & Test st2 packages.
+# Mirrors the "packages" job in .circleci/config.yml (build + test only, no deploy).
+#
+# The st2 source used for the build can be overridden with the repository variables
+# ST2_GITURL and ST2_GITREV (Settings > Secrets and variables > Actions > Variables).
+# The st2web packages used for the Web UI test are built from ST2WEB_GITURL and ST2WEB_GITREV.
+
+name: Packages
+
+on:
+  push:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  st2web:
+    name: st2web packages
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    env:
+      ST2WEB_GITURL: ${{ vars.ST2WEB_GITURL || 'https://github.com/StackStorm/st2web' }}
+      ST2WEB_GITREV: ${{ vars.ST2WEB_GITREV || 'master' }}
+    steps:
+      - name: Clone st2web
+        run: git clone --depth 1 --branch "${ST2WEB_GITREV}" "${ST2WEB_GITURL}" st2web
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # engines.node in st2web's package.json
+          node-version-file: st2web/package.json
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential rpm devscripts debhelper
+          npm install --global lerna@6.0.0 yarn
+
+      - name: Build the st2web deb and rpm packages
+        working-directory: st2web
+        run: |
+          lerna bootstrap
+          make deb
+          make rpm
+          mkdir -p ../st2web-packages
+          cp -v ../st2web_*.deb ../st2web-*.rpm ../st2web-packages/
+
+      - name: Upload the st2web packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: st2web-packages
+          path: st2web-packages
+
+  packages:
+    name: '${{ matrix.distro }}'
+    needs: st2web
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {distro: noble, testnode: nobletest}
+          - {distro: el9, testnode: rockylinux9test}
+          - {distro: el10, testnode: rockylinux10test}
+          - {distro: rhel9, testnode: rhel9test}
+          - {distro: rhel10, testnode: rhel10test}
+    env:
+      # buildenv_st2.sh picks the distro at CIRCLE_NODE_INDEX from DISTROS.
+      DISTROS: ${{ matrix.distro }}
+      CIRCLE_NODE_INDEX: 0
+      DISTRO: ${{ matrix.distro }}
+      ST2_GITURL: ${{ vars.ST2_GITURL || 'https://github.com/StackStorm/st2' }}
+      ST2_GITREV: ${{ vars.ST2_GITREV || 'master' }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Ensure installation scripts are synced with their templates
+        run: make .generated-files-check
+
+      - name: Docker version
+        run: |
+          set -x
+          docker --version
+          docker compose version
+
+      - name: Allow unix_chkpwd to read /etc/shadow in test containers
+        # Ubuntu 24.04 confines /usr/sbin/unix_chkpwd with an AppArmor profile which also applies
+        # inside containers. Rocky Linux's /etc/shadow is mode 0000, so without these capabilities
+        # the PAM account check fails and SSH logins to the el9 test node are rejected.
+        run: |
+          if [ -f /etc/apparmor.d/unix-chkpwd ]; then
+            printf 'capability dac_override,\ncapability dac_read_search,\n' | sudo tee -a /etc/apparmor.d/local/unix-chkpwd
+            sudo apparmor_parser -r /etc/apparmor.d/unix-chkpwd
+          fi
+
+      - name: Initialize packages Build Environment
+        run: |
+          set -x
+          .circle/buildenv_st2.sh
+
+      - name: Copy st2-packages files to build containers
+        run: |
+          # creating dummy container which will hold a volume with data files
+          docker create -v /root/st2-packages -v /root/build -v /var/log/st2 -v /root/.cache/pip -v /tmp/wheelhouse --name st2-packages-vol alpine:3.24 /bin/true
+          # copy st2-packages data files into this volume
+          docker cp "${GITHUB_WORKSPACE}/." st2-packages-vol:/root/st2-packages
+
+      - name: Pull dependent Docker Images
+        run: |
+          .circle/docker-compose.sh pull ${DISTRO} || .circle/docker-compose.sh pull ${DISTRO}
+
+      - name: Build the ${{ matrix.distro }} Packages
+        run: |
+          mkdir -p build/${DISTRO}/log/
+          .circle/docker-compose.sh build ${DISTRO}
+          # Once build container finishes we can copy packages directly from it
+          docker cp st2-packages-vol:/root/build/. build/${DISTRO}
+
+      - name: Test the Packages
+        id: test
+        run: |
+          .circle/docker-compose.sh test ${DISTRO}
+
+      - name: Run st2-self-check on the ${{ matrix.distro }} test node
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          dc exec -T mongodb mongosh --quiet st2 --eval 'db.dropDatabase()'
+          dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh self-check
+
+      - name: Download the st2web packages
+        uses: actions/download-artifact@v4
+        with:
+          name: st2web-packages
+          path: st2web-packages
+
+      - name: Test the Web UI through nginx on the ${{ matrix.distro }} test node
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          docker cp st2web-packages/. st2-packages-vol:/root/build/st2web
+          dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh webui
+
+      - name: Test upgrading from the latest st2 release
+        if: ${{ !cancelled() && steps.test.outcome == 'success' }}
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          dc exec -T mongodb mongosh --quiet st2 --eval 'db.dropDatabase()'
+          dc exec -T "${TESTNODE}" bash /root/st2-packages/scripts/st2_e2e_tests.sh upgrade
+
+      - name: Show test node diagnostics
+        if: failure()
+        env:
+          TESTNODE: ${{ matrix.testnode }}
+        run: |
+          dc() { docker compose -f docker-compose.circle.yml -f docker-compose.override.yml "$@"; }
+          tn() { echo "### $*"; dc exec -T "${TESTNODE}" "$@" || true; }
+          uname -r
+          docker version --format 'docker server {{.Server.Version}}' || true
+          dc ps -a || true
+          dc logs --tail 100 "${TESTNODE}" || true
+          tn systemctl is-system-running
+          tn systemctl --failed --no-pager
+          tn systemctl status sshd ssh --no-pager
+          tn journalctl -u sshd -u ssh --no-pager -n 100
+          tn ls -l /run/nologin /etc/ssh
+          # PAM account phase: unix_chkpwd needs to read the root passwd/shadow entries.
+          tn ls -l /etc/passwd /etc/shadow /usr/sbin/unix_chkpwd
+          tn getent passwd root
+          tn sh -c 'getent shadow root | cut -d: -f1,3-'
+          tn sh -c '/usr/sbin/unix_chkpwd root chkexpiry; echo "unix_chkpwd exit=$?"'
+          tn chage -l root
+          tn grep -E '^(passwd|shadow|group):' /etc/nsswitch.conf
+          tn sh -c 'grep -E "^Cap(Prm|Eff|Bnd)" /proc/1/status; for p in $(pidof sshd); do echo "sshd $p:"; grep -E "^(Cap(Prm|Eff|Bnd)|NoNewPrivs)" /proc/$p/status; done'
+          tn systemctl show sshd -p NoNewPrivileges -p CapabilityBoundingSet -p ProtectSystem -p ProtectHome -p PrivateDevices
+          tn sh -c 'grep -v "^#" /etc/pam.d/sshd; echo ---; grep -E "^account" /etc/pam.d/password-auth /etc/pam.d/system-auth 2>/dev/null'
+          tn sh -c 'ulimit -n'
+          tn sh -c 'rpm -q pam openssh-server systemd authselect 2>/dev/null || dpkg-query -W libpam-modules openssh-server systemd'
+
+      - name: Grab the st2 logs
+        if: always()
+        run: |
+          mkdir -p build/${DISTRO}/log/
+          docker cp st2-packages-vol:/var/log/st2 build/${DISTRO}/log/st2 || true
+
+      - name: Upload packages and logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: packages-${{ matrix.distro }}
+          path: build/${{ matrix.distro }}
+          if-no-files-found: ignore

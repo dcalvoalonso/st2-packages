@@ -14,7 +14,7 @@
 # limitations under the License.
 #
 #
-# DO NOT EDIT MANUALLY.  GENERATED FOR ubuntu 22.04
+# DO NOT EDIT MANUALLY.  GENERATED FOR ubuntu 24.04
 #
 # Please edit the corresponding template file and include files in https://github.com/StackStorm/st2-packages.git.
 
@@ -595,7 +595,7 @@ st2_install_dev_build()
 {
     # Retrieve package URL for the provided dev build from CircleCI build pipeline.
     DEV_BUILD="$1" # Repo name and build number - <repo name>/<build_num> (e.g. st2/5646)
-    DISTRO="$(st2_distribution_name)"  # Distro name (e.g. focal, jammy, el8, el9)
+    DISTRO="$(st2_distribution_name)"  # Distro name (e.g. noble, el9, el10)
     PACKAGE_NAME_REGEX="${DISTRO}/st2[_-].*\.(deb|rpm)$"
     MANIFEST_URL="https://circleci.com/api/v1.1/project/github/StackStorm/${DEV_BUILD}/artifacts"
 
@@ -891,7 +891,7 @@ st2web_install()
 
 nodejs_configure_repository()
 {
-    local NODE_VERSION="20.x"
+    local NODE_VERSION="24.x"
 
     local RM_FILES=(
         /etc/apt/preferences.d/nsolid.pref
@@ -938,7 +938,7 @@ nodejs_install()
 nginx_configure_repo()
 {
     repo_definition "nginx" \
-                    "http://nginx.org/packages/${OS_ID}" \
+                    "http://nginx.org/packages/mainline/${OS_ID}" \
                     "${OS_VERSION_CODENAME}" \
                     "nginx" \
                     "nginx-key" \
@@ -1001,12 +1001,12 @@ nginx_install()
 
 mongodb_configure_repo()
 {
-    repo_definition "mongodb-org-7.0" \
+    repo_definition "mongodb-org-8.2" \
                     "https://repo.mongodb.org/apt/${OS_ID}" \
-                    "${OS_VERSION_CODENAME}/mongodb-org/7.0" \
+                    "${OS_VERSION_CODENAME}/mongodb-org/8.2" \
                     "multiverse" \
-                    "mongodb-org-7.0-key" \
-                    "https://www.mongodb.org/static/pgp/server-7.0.asc"
+                    "mongodb-org-8.0-key" \
+                    "https://www.mongodb.org/static/pgp/server-8.0.asc"
 }
 mongodb_configuration()
 {
