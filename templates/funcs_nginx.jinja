@@ -3,7 +3,7 @@
 nginx_configure_repo()
 {
     repo_definition "nginx" \
-                    "http://nginx.org/packages/rhel/{{ version_id }}/x86_64/" \
+                    "http://nginx.org/packages/mainline/rhel/{{ version_id }}/x86_64/" \
                     "nginx-key" \
                     "http://nginx.org/keys/nginx_signing.key"
 }
@@ -38,7 +38,7 @@ nginx_adjust_selinux_policies()
 nginx_configure_repo()
 {
     repo_definition "nginx" \
-                    "http://nginx.org/packages/${OS_ID}" \
+                    "http://nginx.org/packages/mainline/${OS_ID}" \
                     "${OS_VERSION_CODENAME}" \
                     "nginx" \
                     "nginx-key" \

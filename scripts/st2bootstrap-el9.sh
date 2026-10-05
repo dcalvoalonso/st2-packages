@@ -918,7 +918,7 @@ nodejs_install()
 nginx_configure_repo()
 {
     repo_definition "nginx" \
-                    "http://nginx.org/packages/rhel/9/x86_64/" \
+                    "http://nginx.org/packages/mainline/rhel/9/x86_64/" \
                     "nginx-key" \
                     "http://nginx.org/keys/nginx_signing.key"
 }

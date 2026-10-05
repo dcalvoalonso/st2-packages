@@ -20,6 +20,9 @@ Changed
 
  * Updated the install scripts to MongoDB 8.2 (was 7.0).
 
+ * Updated the install scripts to nginx 1.31 from the nginx.org mainline repository
+   (was the stable repository, 1.30).
+
  * Added systemd generators for st2auth, st2api, st2stream service unit files.
    Contributed by @nzlosh #762
 

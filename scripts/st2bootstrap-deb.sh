@@ -938,7 +938,7 @@ nodejs_install()
 nginx_configure_repo()
 {
     repo_definition "nginx" \
-                    "http://nginx.org/packages/${OS_ID}" \
+                    "http://nginx.org/packages/mainline/${OS_ID}" \
                     "${OS_VERSION_CODENAME}" \
                     "nginx" \
                     "nginx-key" \
